@@ -58,6 +58,32 @@ ON CONFLICT (student_ref, school_year, term, course) DO NOTHING
 """
 
 
+def resolve_geography(conn: Connection) -> None:
+    """Link every existing enrollment row to the currently loaded boundaries.
+
+    Initial map imports can be retried independently of the CSV.  Re-resolving the
+    existing facts is therefore essential: duplicate CSV records are intentionally not
+    inserted again, but they still need fresh boundary ids after a map rebuild.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE enrollment e SET province_id = p.id "
+            "FROM boundary p WHERE p.level = 'province' AND p.name = e.province "
+            "AND e.province_id IS DISTINCT FROM p.id"
+        )
+        cur.execute(
+            "UPDATE enrollment e SET municipality_id = m.id "
+            "FROM boundary m WHERE m.level = 'municipality' AND m.name = e.municity "
+            "AND m.province = e.province AND e.municipality_id IS DISTINCT FROM m.id"
+        )
+        cur.execute(
+            "UPDATE enrollment e SET country_id = c.id "
+            "FROM boundary c WHERE c.level = 'country' AND c.name = e.country "
+            "AND e.country_id IS DISTINCT FROM c.id"
+        )
+    conn.commit()
+
+
 @dataclass
 class LoadResult:
     batch_id: int
