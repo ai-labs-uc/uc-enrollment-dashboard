@@ -15,7 +15,7 @@ const MapPanel = lazy(() =>
 import { StatTiles } from "./components/StatTiles";
 import { UploadPanel } from "./components/UploadPanel";
 import { TrendChart } from "./components/TrendChart";
-import { formatNumber, titleCase } from "./lib/format";
+import { formatNumber, titleCase } from "./lib/format"; import ucLogo from "../uc-logo.png";
 
 function useTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -88,9 +88,9 @@ export default function App() {
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <img
-            src="https://banner2.cleanpng.com/20180716/ly/aavh24sdj.webp"
+            src={ucLogo}
             alt="University of the Cordilleras logo"
-            className="h-12 w-16 shrink-0 object-contain object-left mix-blend-multiply"
+            className="h-12 w-16 shrink-0 object-contain object-left"
           />
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
