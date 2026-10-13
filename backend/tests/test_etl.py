@@ -51,12 +51,9 @@ def test_parent_links_are_set(loaded, conn):
         assert cur.fetchone()["parent"] == "Benguet"
 
 
-def test_simplified_and_mercator_geometry_are_populated(loaded, conn):
+def test_compact_geometry_is_populated(loaded, conn):
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT COUNT(*) AS n FROM boundary "
-            "WHERE geom_simple IS NULL OR geom_3857 IS NULL"
-        )
+        cur.execute("SELECT COUNT(*) AS n FROM boundary WHERE geom IS NULL")
         assert cur.fetchone()["n"] == 0
 
 
