@@ -85,15 +85,25 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-5">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">UC Enrollment Geography</h1>
-          <p className="text-sm text-[var(--color-ink-2)]">
-            Where University of the Cordilleras students come from, SY2023–SY2026.{" "}
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <img
+            src="https://upload.wikimedia.org/wikipedia/commons/8/84/UC_Official_Logo.png"
+            alt="University of the Cordilleras logo"
+            className="h-12 w-16 shrink-0 object-contain object-left"
+          />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+              University of the Cordilleras
+            </p>
+            <h1 className="text-xl font-semibold tracking-tight">Enrollment Data Dashboard</h1>
+            <p className="text-sm text-[var(--color-ink-2)]">
+              Where UC students come from, SY2023–SY2026.{" "}
             <span className="text-[var(--color-ink-muted)]">
               Counts recomputed from the registrar extract.
             </span>
           </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {summary.data ? (
