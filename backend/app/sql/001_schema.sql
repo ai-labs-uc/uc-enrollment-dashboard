@@ -27,25 +27,14 @@ CREATE TABLE IF NOT EXISTS boundary (
     region       text,
     parent_id    bigint REFERENCES boundary(id) ON DELETE SET NULL,
     geom         geometry(MultiPolygon, 4326) NOT NULL,
-    -- Pre-simplified geometry for GeoJSON responses at national zoom. Tolerance is in
-    -- degrees; 0.005 ~= 500 m at this latitude, invisible on a country-wide choropleth.
-    geom_simple  geometry(MultiPolygon, 4326),
-    -- Web Mercator copy, maintained by the loader. Transforming 242 country polygons on
-    -- every tile request cost ~2.1 s; reading a stored, indexed 3857 column costs ~40 ms.
-    geom_3857    geometry(MultiPolygon, 3857),
+    -- Stored already simplified at ingest time.  A single compact geometry keeps the
+    -- whole national map within the storage limit of the hosted database.
     created_at   timestamptz NOT NULL DEFAULT now()
 );
-
--- Upgrades in place. CREATE TABLE IF NOT EXISTS does nothing to an existing table, so
--- every column added after the first release needs its own idempotent ALTER here.
-ALTER TABLE boundary ADD COLUMN IF NOT EXISTS geom_simple geometry(MultiPolygon, 4326);
-ALTER TABLE boundary ADD COLUMN IF NOT EXISTS geom_3857   geometry(MultiPolygon, 3857);
 
 CREATE UNIQUE INDEX IF NOT EXISTS boundary_identity_idx
     ON boundary (level, name, COALESCE(province, ''));
 CREATE INDEX IF NOT EXISTS boundary_geom_idx        ON boundary USING gist (geom);
-CREATE INDEX IF NOT EXISTS boundary_geom_simple_idx ON boundary USING gist (geom_simple);
-CREATE INDEX IF NOT EXISTS boundary_geom_3857_idx   ON boundary USING gist (geom_3857);
 CREATE INDEX IF NOT EXISTS boundary_level_idx       ON boundary (level);
 
 -- ---------------------------------------------------------------- ingest log
