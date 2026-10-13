@@ -88,7 +88,7 @@ export default function App() {
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <img
-            src="https://upload.wikimedia.org/wikipedia/commons/8/84/UC_Official_Logo.png"
+            src="https://banner2.cleanpng.com/20180716/ly/aavh24sdj.webp"
             alt="University of the Cordilleras logo"
             className="h-12 w-16 shrink-0 object-contain object-left"
           />
