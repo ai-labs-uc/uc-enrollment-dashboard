@@ -123,6 +123,10 @@ export interface IngestResult {
   unmatched_municipalities: { municity: string; province: string; rows: number }[];
 }
 
+export interface InitialIngestResult extends IngestResult {
+  boundaries: Record<string, number>;
+}
+
 export interface Batch {
   id: number;
   filename: string;
@@ -163,6 +167,66 @@ async function postFile<T>(path: string, file: File, apiKey: string, note?: stri
   return JSON.parse(text) as T;
 }
 
+async function postInitialUpload(
+  csv: File,
+  boundaries: { country: File; province: File; municipality: File },
+  apiKey: string,
+): Promise<InitialIngestResult> {
+  const start = await fetch(`${API_BASE}/api/ingest/initial/start`, {
+    method: "POST",
+    headers: { "X-API-Key": apiKey },
+  });
+  const startText = await start.text();
+  if (!start.ok) throwUploadError(start.status, startText);
+  const { upload_id: uploadId } = JSON.parse(startText) as { upload_id: string };
+
+  // Keep each request comfortably below common public-proxy upload limits. The API
+  // appends them to a short-lived private file before it reads the GeoPackage.
+  const chunkSize = 5 * 1024 * 1024;
+  for (const [level, file] of Object.entries(boundaries) as [
+    "country" | "province" | "municipality",
+    File,
+  ][]) {
+    for (let offset = 0; offset < file.size; offset += chunkSize) {
+      const response = await fetch(
+        `${API_BASE}/api/ingest/initial/${uploadId}/boundary/${level}` +
+          `?offset=${offset}&total_size=${file.size}`,
+        {
+          method: "PUT",
+          body: file.slice(offset, Math.min(offset + chunkSize, file.size)),
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-API-Key": apiKey,
+          },
+        },
+      );
+      const text = await response.text();
+      if (!response.ok) throwUploadError(response.status, text);
+    }
+  }
+
+  const body = new FormData();
+  body.append("csv", csv);
+  const response = await fetch(`${API_BASE}/api/ingest/initial/${uploadId}/complete`, {
+    method: "POST",
+    body,
+    headers: { "X-API-Key": apiKey },
+  });
+  const text = await response.text();
+  if (!response.ok) throwUploadError(response.status, text);
+  return JSON.parse(text) as InitialIngestResult;
+}
+
+function throwUploadError(status: number, text: string): never {
+  let detail = text.slice(0, 300);
+  try {
+    detail = (JSON.parse(text) as { detail?: string }).detail ?? detail;
+  } catch {
+    /* the raw response is the most useful message available */
+  }
+  throw new ApiError(status, detail);
+}
+
 export const api = {
   health: () => getJson<{ status: string; enrollment_rows: number }>("/api/health"),
   filters: () => getJson<FilterOptions>("/api/filters"),
@@ -187,4 +251,9 @@ export const api = {
     postFile<ValidationResult>("/api/ingest/validate", file, apiKey),
   ingestUpload: (file: File, apiKey: string, note?: string) =>
     postFile<IngestResult>("/api/ingest", file, apiKey, note),
+  ingestInitial: (
+    csv: File,
+    boundaries: { country: File; province: File; municipality: File },
+    apiKey: string,
+  ) => postInitialUpload(csv, boundaries, apiKey),
 };

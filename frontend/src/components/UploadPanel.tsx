@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api, ApiError, type IngestResult, type ValidationResult } from "../lib/api";
+import {
+  api,
+  ApiError,
+  type InitialIngestResult,
+  type IngestResult,
+  type ValidationResult,
+} from "../lib/api";
 import { formatNumber } from "../lib/format";
 
 type Stage = "pick" | "checked" | "loaded";
@@ -34,11 +40,17 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
     }
   });
   const [file, setFile] = useState<File | null>(null);
+  const [boundaries, setBoundaries] = useState<{
+    country: File | null;
+    province: File | null;
+    municipality: File | null;
+  }>({ country: null, province: null, municipality: null });
   const [stage, setStage] = useState<Stage>("pick");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [check, setCheck] = useState<ValidationResult | null>(null);
   const [result, setResult] = useState<IngestResult | null>(null);
+  const [initialResult, setInitialResult] = useState<InitialIngestResult | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const batches = useQuery({ queryKey: ["batches"], queryFn: api.batches });
@@ -52,6 +64,13 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
     setStage("pick");
     setCheck(null);
     setResult(null);
+    setInitialResult(null);
+    setError(null);
+  }
+
+  function pickBoundary(level: "country" | "province" | "municipality", next: File | null) {
+    setBoundaries((current) => ({ ...current, [level]: next }));
+    setInitialResult(null);
     setError(null);
   }
 
@@ -66,7 +85,7 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
     }
   }
 
-  async function run(step: "check" | "load") {
+  async function run(step: "check" | "load" | "initial") {
     if (!file) return;
     setBusy(true);
     setError(null);
@@ -74,11 +93,26 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
       if (step === "check") {
         setCheck(await api.validateUpload(file, apiKey));
         setStage("checked");
-      } else {
+      } else if (step === "load") {
         const loaded = await api.ingestUpload(file, apiKey, "uploaded from the dashboard");
         setResult(loaded);
         setStage("loaded");
         // Every number on the page is now stale.
+        await queryClient.invalidateQueries();
+      } else {
+        if (!boundaries.country || !boundaries.province || !boundaries.municipality) return;
+        const loaded = await api.ingestInitial(
+          file,
+          {
+            country: boundaries.country,
+            province: boundaries.province,
+            municipality: boundaries.municipality,
+          },
+          apiKey,
+        );
+        setResult(loaded);
+        setInitialResult(loaded);
+        setStage("loaded");
         await queryClient.invalidateQueries();
       }
     } catch (caught) {
@@ -103,7 +137,7 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
       className="m-auto w-[min(44rem,92vw)] rounded-xl border border-[var(--color-hairline)] bg-[var(--color-surface)] p-0 text-[var(--color-ink)] backdrop:bg-black/40"
     >
       <div className="flex items-center justify-between border-b border-[var(--color-hairline)] px-5 py-3">
-        <h2 className="text-sm font-semibold">Load a term&rsquo;s enrollment export</h2>
+        <h2 className="text-sm font-semibold">Load enrollment data</h2>
         <button
           type="button"
           onClick={() => dialog.current?.close()}
@@ -155,7 +189,7 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
                 <span className="text-[var(--color-ink-muted)]">({fileSize(file.size)})</span>
               </span>
             ) : (
-              "Drop the CSV here, or choose a file"
+              "Drop the enrollment CSV here, or choose a file"
             )}
           </p>
           <input
@@ -166,6 +200,41 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
             className="mt-2 text-xs text-[var(--color-ink-2)] file:mr-2 file:rounded-lg file:border file:border-[var(--color-hairline)] file:bg-[var(--color-surface)] file:px-3 file:py-1 file:text-xs file:text-[var(--color-ink)]"
           />
         </div>
+
+        <section className="rounded-xl border border-[var(--color-hairline)] px-4 py-3">
+          <h3 className="text-sm font-medium">Initial map setup — once only</h3>
+          <p className="mt-1 text-[11px] text-[var(--color-ink-muted)]">
+            To populate a new database fully, choose all three boundary GeoPackages below. This
+            reloads map geometry and then imports the CSV selected above. Large map files upload
+            securely in small parts, so keep this window open until it completes. Future term
+            updates need only the CSV.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {(
+              [
+                ["country", "Country GeoPackage"],
+                ["province", "Province GeoPackage"],
+                ["municipality", "Municipality GeoPackage"],
+              ] as const
+            ).map(([level, label]) => (
+              <label key={level} className="block text-[11px] text-[var(--color-ink-2)]">
+                {label}
+                <input
+                  type="file"
+                  accept=".gpkg,application/geopackage+sqlite3"
+                  aria-label={label}
+                  onChange={(event) => pickBoundary(level, event.target.files?.[0] ?? null)}
+                  className="mt-1 block w-full text-[11px] file:mr-1 file:rounded file:border file:border-[var(--color-hairline)] file:bg-[var(--color-surface)] file:px-2 file:py-1 file:text-[11px]"
+                />
+                {boundaries[level] ? (
+                  <span className="mt-1 block truncate text-[var(--color-ink-muted)]">
+                    {boundaries[level].name} ({fileSize(boundaries[level].size)})
+                  </span>
+                ) : null}
+              </label>
+            ))}
+          </div>
+        </section>
 
         {error ? (
           <p
@@ -217,6 +286,13 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
                 the map.
               </p>
             ) : null}
+            {initialResult ? (
+              <p className="mt-1 text-[11px] text-[var(--color-ink-muted)]">
+                Map boundaries loaded: {Object.entries(initialResult.boundaries)
+                  .map(([level, count]) => `${count} ${level}`)
+                  .join(", ")}.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -239,8 +315,25 @@ export function UploadPanel({ onClose }: { onClose: () => void }) {
               ? "Loading…"
               : `Load ${formatNumber(check?.rows_valid ?? 0)} rows`}
           </button>
+          <button
+            type="button"
+            disabled={
+              stage !== "checked" ||
+              busy ||
+              !boundaries.country ||
+              !boundaries.province ||
+              !boundaries.municipality ||
+              (check?.rows_valid ?? 0) === 0
+            }
+            onClick={() => run("initial")}
+            className="rounded-lg border border-[var(--color-series-1)] px-3 py-1.5 text-xs font-medium text-[var(--color-series-1)] disabled:opacity-40"
+          >
+            {busy && stage === "checked"
+              ? "Loading initial data…"
+              : "Import CSV + map boundaries"}
+          </button>
           <span className="text-[11px] text-[var(--color-ink-muted)]">
-            Re-loading a file already loaded adds nothing.
+            Re-loading a CSV already loaded adds no duplicate enrollment rows.
           </span>
         </div>
 
