@@ -28,7 +28,7 @@ from psycopg import Connection
 from ..config import get_settings
 from ..db import get_conn
 from ..etl.boundaries import discover_sources, load_boundaries
-from ..etl.enrollments import load_csv, load_stream, validate_stream
+from ..etl.enrollments import load_csv, load_stream, resolve_geography, validate_stream
 from ..gpkg import GeoPackageError
 from ..validate import HeaderError
 
@@ -111,7 +111,11 @@ def _load_initial_data(conn: Connection, data_dir: Path):
     sources = discover_sources(data_dir)
     if len(sources) != len(_INITIAL_FILENAMES):
         raise HTTPException(422, "all three boundary GeoPackages are required")
-    boundaries = load_boundaries(conn, sources)
+    # A browser initial import is also the recovery path for a partial prior import.
+    # Replacing stale geometry is safe: enrollment rows are retained and re-linked once
+    # every boundary level has been loaded.
+    boundaries = load_boundaries(conn, sources, replace=True)
+    resolve_geography(conn)
     result = load_csv(conn, data_dir / "Data for dashboard.csv", note="initial dashboard upload")
     return _result_payload(result, boundaries)
 
