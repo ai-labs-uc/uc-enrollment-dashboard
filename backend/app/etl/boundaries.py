@@ -58,19 +58,49 @@ def discover_sources(data_dir: Path) -> list[BoundarySource]:
 UPSERT = """
 INSERT INTO boundary (level, name, province, region, geom)
 VALUES (%(level)s::boundary_level, %(name)s, %(province)s, %(region)s,
-        ST_Multi(ST_MakeValid(ST_GeomFromWKB(%(wkb)s, 4326))))
+        ST_Multi(ST_SimplifyPreserveTopology(
+            ST_MakeValid(ST_GeomFromWKB(%(wkb)s, 4326)), %(tolerance)s
+        )))
 ON CONFLICT (level, name, COALESCE(province, ''))
 DO UPDATE SET geom = EXCLUDED.geom,
-              region = EXCLUDED.region,
-              geom_simple = NULL,
-              geom_3857 = NULL
+              region = EXCLUDED.region
 """
 
 
 def load_boundaries(
-    conn: Connection, sources: list[BoundarySource], tolerance: float = 0.005
+    conn: Connection,
+    sources: list[BoundarySource],
+    tolerance: float = 0.005,
+    *,
+    replace: bool = False,
 ) -> dict[str, int]:
-    """Insert or refresh boundary geometry. Returns feature counts per level."""
+    """Insert compact boundary geometry and return feature counts per level.
+
+    GeoPackages contain more detail than this dashboard can display.  Simplifying each
+    feature *before* it reaches PostgreSQL avoids storing the 680 MB source layer and
+    its projected/simplified copies, which exceeds Neon free-project storage.
+
+    ``replace`` is used by the first-time browser importer after a failed or partial
+    map load.  It clears stale geometry, vacuums reusable index pages, then reloads and
+    reconnects the already-imported enrollment records below.
+    """
+    if replace:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM boundary")
+            # These indexes belonged to the former three-copy geometry design.  They
+            # may contain large, now-unneeded entries from a failed initial import.
+            cur.execute("DROP INDEX IF EXISTS boundary_geom_simple_idx")
+            cur.execute("DROP INDEX IF EXISTS boundary_geom_3857_idx")
+        conn.commit()
+        # VACUUM must run outside a transaction.  It makes the pages released by the
+        # deletion reusable without requiring the extra disk space of VACUUM FULL.
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute("VACUUM (ANALYZE) boundary")
+        finally:
+            conn.autocommit = False
+
     counts: dict[str, int] = {}
     for source in sources:
         loaded = skipped = 0
@@ -96,6 +126,7 @@ def load_boundaries(
                             else None
                         ),
                         "wkb": wkb,
+                        "tolerance": tolerance,
                     },
                 )
                 loaded += 1
@@ -110,20 +141,6 @@ def load_boundaries(
             "FROM boundary p "
             "WHERE m.level = 'municipality' AND p.level = 'province' "
             "  AND p.name = m.province AND m.parent_id IS DISTINCT FROM p.id"
-        )
-        # Simplified geometry for GeoJSON at national zoom. Topology-preserving, so
-        # shared borders stay shared and no slivers open up between neighbours.
-        cur.execute(
-            "UPDATE boundary SET geom_simple = "
-            "  ST_Multi(ST_MakeValid(ST_SimplifyPreserveTopology(geom, %s))) "
-            "WHERE geom_simple IS NULL",
-            (tolerance,),
-        )
-        # Store the Web Mercator copy once, at load time, so the tile endpoint never
-        # reprojects. Measured on the country layer: 2.1 s per tile before, ~40 ms after.
-        cur.execute(
-            "UPDATE boundary SET geom_3857 = ST_Multi(ST_MakeValid(ST_Transform(geom, 3857))) "
-            "WHERE geom_3857 IS NULL"
         )
         cur.execute("ANALYZE boundary")
     conn.commit()
