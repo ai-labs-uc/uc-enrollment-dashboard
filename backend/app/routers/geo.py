@@ -51,7 +51,9 @@ def geo(
 
     where, params = filters.where("e")
     measure = filters.measure("e")
-    geom_column = "COALESCE(b.geom_simple, b.geom)" if simplified else "b.geom"
+    # The stored geometry is already topology-preserving and storage-safe.  Keep the
+    # query parameter for backwards compatibility with bookmarked API links.
+    geom_column = "b.geom"
     params["level"] = level
 
     scope = ""
@@ -130,7 +132,7 @@ def tiles(conn: Conn, filters: Filters, level: Level, z: int, x: int, y: int) ->
         FROM enrollment e{where}
         GROUP BY 1
     ),
-    mvt AS (
+    geometries AS (
         SELECT b.id,
                b.name,
                b.province,
@@ -138,15 +140,26 @@ def tiles(conn: Conn, filters: Filters, level: Level, z: int, x: int, y: int) ->
                COALESCE(c.headcount, 0) AS headcount,
                COALESCE(c.records, 0) AS records,
                COALESCE(c.value, 0) AS value,
-               ST_AsMVTGeom(
-                   ST_Simplify(b.geom_3857, %(tolerance)s),
-                   envelope.geom, 4096, 64, true
-               ) AS geom
+               ST_Transform(b.geom, 3857) AS geom
         FROM boundary b
         LEFT JOIN counts c ON c.boundary_id = b.id
-        CROSS JOIN envelope
         WHERE b.level = %(level)s::boundary_level
-          AND b.geom_3857 && envelope.geom
+    ),
+    mvt AS (
+        SELECT b.id,
+               b.name,
+               b.province,
+               b.region,
+               b.headcount,
+               b.records,
+               b.value,
+               ST_AsMVTGeom(
+                   ST_Simplify(b.geom, %(tolerance)s),
+                   envelope.geom, 4096, 64, true
+               ) AS geom
+        FROM geometries b
+        CROSS JOIN envelope
+        WHERE b.geom && envelope.geom
     )
     SELECT ST_AsMVT(mvt.*, %(layer_name)s::text, 4096, 'geom') AS tile
     FROM mvt WHERE geom IS NOT NULL
