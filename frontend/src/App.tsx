@@ -90,7 +90,7 @@ export default function App() {
           <img
             src="https://banner2.cleanpng.com/20180716/ly/aavh24sdj.webp"
             alt="University of the Cordilleras logo"
-            className="h-12 w-16 shrink-0 object-contain object-left"
+            className="h-12 w-16 shrink-0 object-contain object-left mix-blend-multiply"
           />
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
