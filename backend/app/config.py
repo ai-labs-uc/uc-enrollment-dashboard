@@ -15,8 +15,10 @@ class Settings(BaseSettings):
     # Guards the ingest endpoint. Blank disables ingest over HTTP entirely, which is the
     # correct setting until the upload screen exists and has a real auth story.
     ingest_api_key: str = ""
-    # Largest upload accepted by /api/ingest, in megabytes.
-    max_upload_mb: int = 128
+    # Largest individual upload accepted by /api/ingest, in megabytes. The registrar's
+    # provincial and municipal GeoPackages are each a little over 200 MB, so the
+    # browser-based first-time importer needs more than the CSV-only default.
+    max_upload_mb: int = 256
     # Simplification tolerance in degrees for /api/geo responses.
     geojson_tolerance: float = 0.005
 
