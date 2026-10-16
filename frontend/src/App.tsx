@@ -242,7 +242,7 @@ export default function App() {
       <footer className="mt-6 text-xs text-[var(--color-ink-muted)]">
         Students = distinct people. Enrollment records = one row per student, school year and
         term; a student enrolled in three terms is one student and three records.
-      </footer>
+      </footer> {" "}© 2026 Developed by AI and Emerging Technologies Office.
     </div>
   );
 }
