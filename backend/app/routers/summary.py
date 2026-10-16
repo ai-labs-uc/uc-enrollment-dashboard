@@ -120,10 +120,10 @@ def feeder_schools(
     clause = where + (" AND " if where else " WHERE ") + "e.prev_school IS NOT NULL"
     with conn.cursor() as cur:
         cur.execute(
-            f"SELECT e.prev_school AS school, e.province AS province, "
+            f"SELECT e.prev_school AS school, 'All provinces' AS province, "
             f"       COUNT(DISTINCT e.student_ref) AS headcount "
             f"FROM enrollment e{clause} "
-            f"GROUP BY 1, 2 ORDER BY 3 DESC LIMIT %(limit)s",
+            f"GROUP BY 1 ORDER BY 3 DESC, 1 ASC LIMIT %(limit)s",
             params,
         )
         return cur.fetchall()
